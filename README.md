@@ -1,122 +1,146 @@
-# Time Series Prediction — DBP Forecasting
+# Previsão de Receita Previdenciária (RGPS/INSS)
 
-A unified machine learning pipeline for forecasting **Diastolic Blood Pressure (DBP)** time series, combining classical ensemble models with a Temporal Fusion Transformer.
-
----
-
-## Overview
-
-The project is organized around two pipelines that can be run independently or together via a single master notebook:
-
-| Pipeline | Models | Framework |
-|---|---|---|
-| **A — Ensemble Walk-Forward** | GRU · LSTM · GBRT | TensorFlow / Keras + scikit-learn |
-| **B — TFT v5** | Temporal Fusion Transformer | PyTorch Forecasting + Optuna |
-
-Results from both pipelines are compared side-by-side in the final section of `master_pipeline.ipynb`.
+Material suplementar do artigo submetido para revista de economia aplicada.
+Compara modelos de previsão para a arrecadação mensal do RGPS/INSS no Brasil,
+com validação fora da amostra no período 2020–2024 (incluindo a pandemia de COVID-19).
 
 ---
 
-## Notebooks
+## Modelos Comparados
 
-| File | Description |
-|---|---|
-| `master_pipeline.ipynb` | Main entry point. Runs Pipeline A and/or B, generates all plots and exports results. |
-| `build_master_notebook.py` | Script that programmatically generates `master_pipeline.ipynb` from source. Run with `python build_master_notebook.py`. |
-| `part-fase7.ipynb` | Experimental notebook for phase 7 of the research. |
-| `tft1-Copy1.ipynb` | Standalone TFT v5 development notebook with interpretability plots. |
+| Pipeline | Modelos | Framework |
+|----------|---------|-----------|
+| A — Ensemble | GRU · LSTM · GBRT · Ensemble | TensorFlow / scikit-learn |
+| B — TFT | Temporal Fusion Transformer | PyTorch Forecasting |
+| C — Baselines | SARIMA · ETS (Holt-Winters) | pmdarima · statsmodels |
 
----
-
-## Pipeline A — Ensemble Walk-Forward (GRU + LSTM + GBRT)
-
-- **Walk-forward validation** with configurable refit interval
-- Three time-series transformations applied independently:
-  - `sazonal_lag12` — Seasonal lag-12 decomposition
-  - `log_retorno` — Log return
-  - `retorno_pct` — Percentage return
-- Each transformation trains GRU, LSTM, and GBRT separately; predictions are **ensembled** (averaged)
-- A **30-step future forecast** is generated using the best-performing transformation (`sazonal_lag12`)
-- Outputs saved to `master_results/`:
-  - `pA_*.csv` — fold-level predictions per transformation
-  - `comparative_MinMaxScaler.xlsx` — aggregated metrics table
-  - Walk-forward, R², and forecast PNGs
-
-## Pipeline B — TFT v5 (Temporal Fusion Transformer)
-
-- **Expanding-window cross-validation** (3 folds)
-- **Optuna hyperparameter optimization** (20 trials per fold)
-- Rich feature set: moving averages (3/6/12m), z-score, volatility, seasonal index, calendar encodings
-- Interpretability outputs: variable importance, attention weights, confidence intervals
-- Disabled by default — requires `pytorch-forecasting`. See [Enabling TFT](#enabling-tft) below.
+Divisão temporal fixa: treino 2004–2015 · validação 2016 · teste 2017–2019 · OOT 2020–2024.
 
 ---
 
-## Metrics
+## Estrutura do Repositório
 
-All models are evaluated with:
-
-| Metric | Description |
-|---|---|
-| RMSE | Root Mean Squared Error |
-| MAE | Mean Absolute Error |
-| MAPE % | Mean Absolute Percentage Error |
-| R² | Coefficient of Determination |
-| Viés % | Bias percentage |
-| Estab % | Stability percentage |
-
----
-
-## Configuration
-
-Everything is controlled from a **single cell** at the top of `master_pipeline.ipynb`:
-
-```python
-SCALER_TYPE      = "MinMaxScaler"       # "MinMaxScaler" | "StandardScaler" | "RobustScaler"
-DATA_PATH        = r'...\Base_DBP.xlsx'
-PIPELINES_TO_RUN = ["ensemble_gru_lstm_gbrt"]  # add "tft" to enable Pipeline B
-TRANSFORMATIONS  = ["sazonal_lag12", "log_retorno", "retorno_pct"]
-WINDOW_SIZE      = 14
+```
+projeto/
+├── data/
+│   └── Base_DBP.xlsx          # série histórica mensal (não incluída; ver abaixo)
+├── master_pipeline.ipynb      # notebook principal
+├── requirements.txt           # dependências com versões fixas
+├── run.sh                     # script de inicialização reproduzível
+├── README.md                  # este arquivo
+└── master_results/            # saídas geradas automaticamente
+    ├── ablation_study.csv
+    ├── pp_monetary_errors.csv
+    ├── pp_subperiod_mape.csv
+    ├── comparative_*.xlsx
+    └── *.png
 ```
 
-Model architectures (GRU, LSTM, GBRT, TFT) are also configurable in the same cell.
-
 ---
 
-## Enabling TFT
+## Requisitos
 
-1. Uncomment `"tft"` in `PIPELINES_TO_RUN`:
-   ```python
-   PIPELINES_TO_RUN = [
-       "ensemble_gru_lstm_gbrt",
-       "tft",   # ← uncomment this
-   ]
-   ```
-2. Install the extra dependency:
-   ```bash
-   pip install pytorch-forecasting
-   ```
-3. Run all cells (`Kernel → Restart & Run All`).
-
----
-
-## Requirements
+- **Python** >= 3.10
+- Pacotes listados em `requirements.txt`
 
 ```bash
-pip install tensorflow keras scikit-learn pandas numpy openpyxl nbformat
-# For Pipeline B (TFT):
-pip install pytorch-forecasting optuna
+pip install -r requirements.txt
 ```
 
-Python 3.10+ recommended.
+**Nota sobre `fracdiff`:** o pacote é opcional.
+Se não instalado, o notebook usa uma implementação interna equivalente em NumPy.
+Para instalar: `pip install fracdiff`
 
 ---
 
-## Results
+## Como Executar
 
-Current results (session `2026-03-09`, `MinMaxScaler`) are stored in `master_results/`:
+### 1. Preparar os dados
 
-- `comparative_MinMaxScaler.xlsx` — full metrics table for all Pipeline A models
-- `comparative_r2_MinMaxScaler.png` — R² bar chart comparison
-- `comparativo_MinMaxScaler_sazonal.png` — seasonal comparison plot
-- `pA_forecast30y_MinMaxScaler.csv` — 30-step future forecast values
+Copie o arquivo `Base_DBP.xlsx` para o diretório `data/`:
+
+```
+data/Base_DBP.xlsx
+```
+
+### 2. Iniciar o notebook (forma reproduzível)
+
+```bash
+bash run.sh
+```
+
+O script `run.sh`:
+- Define `PYTHONHASHSEED=42` antes de iniciar o Python
+- Verifica dependências
+- Abre o Jupyter Notebook na interface padrão
+
+Outras opções:
+
+```bash
+bash run.sh --lab       # JupyterLab
+bash run.sh --execute   # execução headless sem interface (via nbconvert)
+```
+
+### 3. Execução manual (menos reproduzível)
+
+```bash
+export PYTHONHASHSEED=42
+jupyter notebook master_pipeline.ipynb
+```
+
+---
+
+## Reprodutibilidade
+
+| Mecanismo | Valor |
+|-----------|-------|
+| `PYTHONHASHSEED` | 42 (via `run.sh`) |
+| `numpy.random.seed` | 42 |
+| `tf.random.set_seed` | 42 |
+| `pl.seed_everything` | 42 |
+| Divisão temporal | Fixa por data (sem aleatoriedade) |
+| Versões de pacotes | Fixas em `requirements.txt` |
+
+> **Importante:** `PYTHONHASHSEED` deve ser definido *antes* de iniciar o Python.
+> A linha `os.environ["PYTHONHASHSEED"]` dentro do notebook não tem efeito sobre
+> o hash do interpretador já em execução. Use `run.sh` para garantia completa.
+
+---
+
+## Saídas Geradas
+
+Todas as saídas são gravadas em `master_results/`:
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `ablation_study.csv` | 27 combinações (transform × scaler × window) |
+| `pp_monetary_errors.csv` | Erros monetários acumulados por modelo (R$ bi) |
+| `pp_subperiod_mape.csv` | MAPE% por subperíodo econômico (pré-COVID / choque / recuperação / estabilização) |
+| `comparative_*.xlsx` | Tabela comparativa de todos os modelos |
+| `execution_times.csv` | Tempo de execução de cada pipeline |
+| `*.png` | Gráficos publication-ready |
+
+---
+
+## Citação Sugerida
+
+Se você utilizar este código ou os resultados em publicações acadêmicas, cite:
+
+```
+[AUTOR(ES)]. Previsão de Receita Previdenciária com Métodos de Aprendizado de Máquina:
+Estudo Comparativo para o RGPS/INSS (2004–2024). [Nome da Revista], [Ano].
+DOI: [a preencher após aceite]
+```
+
+Código disponível em: [URL do repositório]
+
+---
+
+## Licença
+
+Este material é disponibilizado para fins de revisão e reprodutibilidade científica.
+Para outros usos, entre em contato com os autores.
+
+---
+
+*Gerado automaticamente pelo pipeline. Última atualização: ver célula de verificação de integridade no notebook.*
